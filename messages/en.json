@@ -122,7 +122,7 @@
     "card2Title": "How do teams use llm-citeops with GitHub and CI?",
     "card2Body": "Teams export HTML and JSON reports into GitHub workflows, compare score changes across releases, and block merges when the agreed bar drops.",
     "card3Title": "What type of report fits Vercel previews and production sites?",
-    "card3Body": "HTML works for human review, JSON fits automation, and CSV helps content ops benchmark many URLs from Vercel previews or live properties."
+    "card3Body": "HTML works for human review, JSON fits automation, and CSV helps content ops benchmark many URLs or compare a launch page against a competitor."
   },
   "Comparison": {
     "eyebrow": "Comparison & alternatives",
@@ -165,15 +165,15 @@
     "card4Body": "Read-only fetches, configurable rate limits, and robots awareness for compliant crawling.",
     "card5Title": "Overview command",
     "card5Body": "llm-citeops overview surfaces capabilities, outputs, and quick-start hints in the terminal.",
-    "card6Title": "Batch at scale",
-    "card6Body": "Audit directories of Markdown/HTML or expand sitemaps to CSV for wide coverage."
+    "card6Title": "Competitor analysis",
+    "card6Body": "Compare one live URL against a competitor URL to see score deltas, parity gaps, and first fixes."
   },
   "Action": {
     "title": "See it in your terminal",
     "subtitle": "The terminal stays honest and technical, while the site explains the business outcome in a cleaner way.",
     "imageAlt": "Terminal screenshot of the llm-citeops overview capability dashboard",
     "codeCaption": "Quick start",
-    "codeBlock": "npx llm-citeops audit --url \"https://example.com/docs/article\" --output html --output-path ./report.html",
+    "codeBlock": "npx llm-citeops audit --url \"https://example.com/docs/article\" --compare \"https://competitor.example/docs/article\" --output html --output-path ./compare-report.html",
     "detail1": "Run the same checks locally, in CI, or across a sitemap.",
     "detail2": "Share a readable report with non-technical stakeholders without hiding the underlying evidence.",
     "detail3": "Use the playground for fast exploration, then move the workflow into your repo."

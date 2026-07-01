@@ -1,6 +1,9 @@
 import type {
   AuditResult,
+  ComparisonAuditDelta,
+  ComparisonInsight,
   SiteOpsDownloads,
+  SiteOpsComparisonReport,
   SiteOpsReport,
   SiteOpsScores,
   ScoreBand,
@@ -49,6 +52,18 @@ export async function auditUrl(url: string): Promise<SiteOpsReport> {
   return buildSiteOpsReport(normalizedUrl, html);
 }
 
+export async function compareUrls(
+  targetUrl: string,
+  competitorUrl: string,
+): Promise<SiteOpsComparisonReport> {
+  const [target, competitor] = await Promise.all([
+    auditUrl(targetUrl),
+    auditUrl(competitorUrl),
+  ]);
+
+  return buildComparisonReport(target, competitor);
+}
+
 export function buildSiteOpsReport(url: string, html: string): SiteOpsReport {
   const ctx = parseHtml(url, html);
   const audits = withRecommendations(runAudits(ctx));
@@ -72,6 +87,202 @@ export function createDownloads(report: SiteOpsReport): SiteOpsDownloads {
     html: renderHtmlReport(report),
     csv: renderCsvReport(report),
   };
+}
+
+export function createComparisonDownloads(
+  report: SiteOpsComparisonReport,
+): SiteOpsDownloads {
+  return {
+    json: JSON.stringify(report, null, 2),
+    html: renderHtmlComparisonReport(report),
+    csv: renderCsvComparisonReport(report),
+  };
+}
+
+export function buildComparisonReport(
+  target: SiteOpsReport,
+  competitor: SiteOpsReport,
+): SiteOpsComparisonReport {
+  return {
+    type: "comparison",
+    timestamp: new Date().toISOString(),
+    target,
+    competitor,
+    comparison: buildComparisonSummary(target, competitor),
+  };
+}
+
+function buildComparisonSummary(
+  target: SiteOpsReport,
+  competitor: SiteOpsReport,
+) {
+  const auditDeltas = target.audits.map((targetAudit) => {
+    const competitorAudit = findAudit(competitor.audits, targetAudit.id);
+
+    return {
+      id: targetAudit.id,
+      category: targetAudit.category,
+      title: targetAudit.title,
+      target_status: targetAudit.status,
+      competitor_status: competitorAudit.status,
+      target_score: targetAudit.score,
+      competitor_score: competitorAudit.score,
+      delta: targetAudit.score - competitorAudit.score,
+    };
+  });
+
+  const targetAdvantages = auditDeltas
+    .filter((audit) => audit.delta > 0)
+    .sort((left, right) => rankAuditDelta(right, target) - rankAuditDelta(left, target));
+  const competitorAdvantages = auditDeltas
+    .filter((audit) => audit.delta < 0)
+    .sort((left, right) => rankAuditDelta(right, target) - rankAuditDelta(left, target));
+
+  return {
+    scores: {
+      composite: scoreDelta(target.scores.composite, competitor.scores.composite),
+      aeo: scoreDelta(target.scores.aeo, competitor.scores.aeo),
+      geo: scoreDelta(target.scores.geo, competitor.scores.geo),
+    },
+    leader: buildComparisonLeader(target, competitor),
+    audit_deltas: auditDeltas,
+    target_advantages: targetAdvantages,
+    competitor_advantages: competitorAdvantages,
+    competitor_edges: competitorAdvantages.map((audit) =>
+      buildCompetitorEdge(audit, target),
+    ),
+    improve_first: buildImproveFirst(auditDeltas, target),
+  };
+}
+
+function findAudit(audits: AuditResult[], id: string) {
+  const audit = audits.find((candidate) => candidate.id === id);
+  if (!audit) {
+    throw new Error(`Competitor audit missing expected check: ${id}`);
+  }
+  return audit;
+}
+
+function scoreDelta(target: number, competitor: number) {
+  return {
+    target,
+    competitor,
+    delta: target - competitor,
+  };
+}
+
+function buildComparisonLeader(
+  target: SiteOpsReport,
+  competitor: SiteOpsReport,
+) {
+  const delta = target.scores.composite - competitor.scores.composite;
+  const scoreGap = Math.abs(delta);
+
+  if (delta === 0) {
+    return {
+      role: "tie" as const,
+      label: "Even match",
+      score_gap: scoreGap,
+      summary: `Both pages scored ${target.scores.composite}. Use the opportunities below to create a visible lead.`,
+    };
+  }
+
+  if (delta > 0) {
+    return {
+      role: "target" as const,
+      label: "Target leads",
+      score_gap: scoreGap,
+      summary: `Target leads by ${scoreGap} point${scoreGap === 1 ? "" : "s"}, but competitor gaps still show what to defend.`,
+    };
+  }
+
+  return {
+    role: "competitor" as const,
+    label: "Competitor leads",
+    score_gap: scoreGap,
+    summary: `Competitor leads by ${scoreGap} point${scoreGap === 1 ? "" : "s"}. Prioritize the checks they pass and target misses.`,
+  };
+}
+
+function buildCompetitorEdge(
+  audit: ComparisonAuditDelta,
+  target: SiteOpsReport,
+): ComparisonInsight {
+  const targetAudit = findAudit(target.audits, audit.id);
+  const scoreImpact =
+    targetAudit.recommendation?.score_impact ?? Math.round(targetAudit.weight * 10);
+
+  return {
+    id: audit.id,
+    category: audit.category,
+    title: audit.title,
+    target_status: audit.target_status,
+    competitor_status: audit.competitor_status,
+    priority:
+      targetAudit.recommendation?.priority ?? priorityFromImpact(scoreImpact),
+    score_impact: scoreImpact,
+    reason: `Competitor passes this check while the target is ${audit.target_status}.`,
+    action:
+      targetAudit.recommendation?.instruction ??
+      `Match the competitor's coverage for ${audit.title.toLowerCase()}.`,
+  };
+}
+
+function buildImproveFirst(
+  auditDeltas: ComparisonAuditDelta[],
+  target: SiteOpsReport,
+): ComparisonInsight[] {
+  const deltaById = new Map(auditDeltas.map((audit) => [audit.id, audit]));
+
+  return target.audits
+    .filter((audit) => audit.status !== "pass")
+    .map((audit) => {
+      const delta = deltaById.get(audit.id);
+      const scoreImpact =
+        audit.recommendation?.score_impact ?? Math.round(audit.weight * 10);
+      const competitorHasEdge = delta?.competitor_status === "pass";
+
+      return {
+        id: audit.id,
+        category: audit.category,
+        title: audit.title,
+        target_status: audit.status,
+        competitor_status: delta?.competitor_status ?? "fail",
+        priority: audit.recommendation?.priority ?? priorityFromImpact(scoreImpact),
+        score_impact: scoreImpact,
+        reason: competitorHasEdge
+          ? "Competitor already passes this check, making it an immediate parity gap."
+          : "High-impact target issue that can lift the report even without a competitor gap.",
+        action:
+          audit.recommendation?.instruction ??
+          `Improve ${audit.title.toLowerCase()} to recover score and citation readiness.`,
+      };
+    })
+    .sort((left, right) => insightRank(right) - insightRank(left))
+    .slice(0, 5);
+}
+
+function rankAuditDelta(delta: ComparisonAuditDelta, target: SiteOpsReport) {
+  const targetAudit = findAudit(target.audits, delta.id);
+  const impact =
+    targetAudit.recommendation?.score_impact ?? Math.round(targetAudit.weight * 10);
+  return impact + Math.abs(delta.delta) * 100;
+}
+
+function insightRank(insight: ComparisonInsight) {
+  const competitorEdgeBoost =
+    insight.competitor_status === "pass" && insight.target_status !== "pass"
+      ? 1000
+      : 0;
+  const priorityBoost =
+    insight.priority === "high" ? 100 : insight.priority === "medium" ? 50 : 10;
+  return competitorEdgeBoost + priorityBoost + insight.score_impact;
+}
+
+function priorityFromImpact(scoreImpact: number) {
+  if (scoreImpact >= 13) return "high";
+  if (scoreImpact >= 10) return "medium";
+  return "low";
 }
 
 async function fetchHtml(url: string): Promise<string> {
@@ -865,6 +1076,204 @@ function renderCsvReport(report: SiteOpsReport) {
       String(warnCount),
     ].join(","),
   ].join("\n");
+}
+
+function renderHtmlComparisonReport(report: SiteOpsComparisonReport) {
+  const { target, competitor, comparison } = report;
+  const topRows = comparison.audit_deltas
+    .filter((audit) => audit.delta !== 0)
+    .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta))
+    .slice(0, 8);
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CiteOps Competitor Comparison</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 0; background: #faf8f5; color: #1a1a1a; }
+      main { max-width: 1080px; margin: 0 auto; padding: 40px 20px 80px; }
+      a { color: #426a5a; }
+      .card { background: #fff; border: 1px solid #e8e2d9; border-radius: 18px; padding: 24px; margin-top: 20px; }
+      .grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
+      .split { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; }
+      .score { background: #fffdfa; border-radius: 14px; padding: 18px; border: 1px solid #e8e2d9; }
+      .eyebrow { text-transform: uppercase; letter-spacing: .08em; font-size: 12px; color: #6b6560; }
+      .value { font-size: 36px; font-weight: 700; margin-top: 8px; }
+      .delta { display: inline-block; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700; }
+      .positive { background: #e9f7ee; color: #157347; }
+      .negative { background: #fde8e6; color: #b42318; }
+      .neutral { background: #fff4d8; color: #935f00; }
+      .insight { border-top: 1px solid #eee3d8; padding: 16px 0; }
+      .insight:first-child { border-top: 0; padding-top: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border-top: 1px solid #eee3d8; padding: 12px; text-align: left; vertical-align: top; }
+      th { color: #6b6560; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+      @media (max-width: 760px) { .grid, .split { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Competitor comparison</p>
+      <h1>${escapeHtml(comparison.leader.label)}</h1>
+      <p>${escapeHtml(comparison.leader.summary)}</p>
+      <p>Generated: ${escapeHtml(new Date(report.timestamp).toLocaleString())}</p>
+
+      <section class="card split">
+        <div>
+          <p class="eyebrow">Target</p>
+          <h2>${escapeHtml(target.url)}</h2>
+        </div>
+        <div>
+          <p class="eyebrow">Competitor</p>
+          <h2>${escapeHtml(competitor.url)}</h2>
+        </div>
+      </section>
+
+      <section class="card grid">
+        ${renderComparisonScoreCard("Composite", comparison.scores.composite)}
+        ${renderComparisonScoreCard("AEO", comparison.scores.aeo)}
+        ${renderComparisonScoreCard("GEO", comparison.scores.geo)}
+      </section>
+
+      <section class="card split">
+        <div>
+          <h2>Improve first</h2>
+          ${renderComparisonInsights(comparison.improve_first)}
+        </div>
+        <div>
+          <h2>Competitor edge</h2>
+          ${renderComparisonInsights(comparison.competitor_edges)}
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Largest check deltas</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Check</th>
+              <th>Target</th>
+              <th>Competitor</th>
+              <th>Delta</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${topRows
+              .map(
+                (audit) => `<tr>
+                  <td>${escapeHtml(audit.title)}</td>
+                  <td>${escapeHtml(audit.target_status)}</td>
+                  <td>${escapeHtml(audit.competitor_status)}</td>
+                  <td>${escapeHtml(formatDelta(audit.delta))}</td>
+                </tr>`,
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </body>
+</html>`;
+}
+
+function renderComparisonScoreCard(
+  label: string,
+  score: SiteOpsComparisonReport["comparison"]["scores"]["composite"],
+) {
+  return `<div class="score">
+    <div class="eyebrow">${escapeHtml(label)}</div>
+    <div class="value">${score.target} vs ${score.competitor}</div>
+    <span class="delta ${deltaTone(score.delta)}">${escapeHtml(formatDelta(score.delta))}</span>
+  </div>`;
+}
+
+function renderComparisonInsights(insights: ComparisonInsight[]) {
+  if (insights.length === 0) {
+    return "<p>No priority gaps found for this section.</p>";
+  }
+
+  return insights
+    .slice(0, 5)
+    .map(
+      (insight) => `<div class="insight">
+        <p class="eyebrow">${escapeHtml(insight.priority)} priority - +${insight.score_impact} impact</p>
+        <h3>${escapeHtml(insight.title)}</h3>
+        <p>${escapeHtml(insight.reason)}</p>
+        <p>${escapeHtml(insight.action)}</p>
+      </div>`,
+    )
+    .join("");
+}
+
+function renderCsvComparisonReport(report: SiteOpsComparisonReport) {
+  const headers = [
+    "role",
+    "url",
+    "timestamp",
+    "composite",
+    "aeo",
+    "geo",
+    "band",
+    "pass_count",
+    "fail_count",
+    "warn_count",
+    "composite_delta_vs_other",
+    "aeo_delta_vs_other",
+    "geo_delta_vs_other",
+  ];
+  const { composite, aeo, geo } = report.comparison.scores;
+  const rows = [
+    comparisonCsvRow("target", report.target, composite.delta, aeo.delta, geo.delta),
+    comparisonCsvRow(
+      "competitor",
+      report.competitor,
+      -composite.delta,
+      -aeo.delta,
+      -geo.delta,
+    ),
+  ];
+
+  return [headers.join(","), ...rows].join("\n");
+}
+
+function comparisonCsvRow(
+  role: string,
+  report: SiteOpsReport,
+  compositeDelta: number,
+  aeoDelta: number,
+  geoDelta: number,
+) {
+  const passCount = report.audits.filter((audit) => audit.status === "pass").length;
+  const failCount = report.audits.filter((audit) => audit.status === "fail").length;
+  const warnCount = report.audits.filter((audit) => audit.status === "warn").length;
+
+  return [
+    role,
+    csvEscape(report.url),
+    csvEscape(report.timestamp),
+    String(report.scores.composite),
+    String(report.scores.aeo),
+    String(report.scores.geo),
+    csvEscape(report.scores.band),
+    String(passCount),
+    String(failCount),
+    String(warnCount),
+    String(compositeDelta),
+    String(aeoDelta),
+    String(geoDelta),
+  ].join(",");
+}
+
+function formatDelta(delta: number) {
+  return delta > 0 ? `+${delta}` : String(delta);
+}
+
+function deltaTone(delta: number) {
+  if (delta > 0) return "positive";
+  if (delta < 0) return "negative";
+  return "neutral";
 }
 
 function extractTagText(html: string, tag: string) {

@@ -10,7 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "llm-citeops": "^1.0.2",
+    "llm-citeops": "^1.0.5",
     "next": "^15.5.14",
     "next-intl": "^4.9.0",
     "react": "^19.0.0",
