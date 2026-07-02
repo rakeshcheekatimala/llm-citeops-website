@@ -54,6 +54,71 @@ export type PlaygroundAuditResponse = {
   downloads: SiteOpsDownloads;
 };
 
+export type ComparisonRole = "target" | "competitor" | "tie";
+
+export type ComparisonScoreDelta = {
+  target: number;
+  competitor: number;
+  delta: number;
+};
+
+export type ComparisonAuditDelta = {
+  id: string;
+  category: AuditCategory;
+  title: string;
+  target_status: AuditStatus;
+  competitor_status: AuditStatus;
+  target_score: number;
+  competitor_score: number;
+  delta: number;
+};
+
+export type ComparisonInsight = {
+  id: string;
+  category: AuditCategory;
+  title: string;
+  target_status: AuditStatus;
+  competitor_status: AuditStatus;
+  priority: RecommendationPriority;
+  score_impact: number;
+  reason: string;
+  action: string;
+};
+
+export type ComparisonLeader = {
+  role: ComparisonRole;
+  label: string;
+  score_gap: number;
+  summary: string;
+};
+
+export type ComparisonSummary = {
+  scores: {
+    composite: ComparisonScoreDelta;
+    aeo: ComparisonScoreDelta;
+    geo: ComparisonScoreDelta;
+  };
+  leader: ComparisonLeader;
+  audit_deltas: ComparisonAuditDelta[];
+  target_advantages: ComparisonAuditDelta[];
+  competitor_advantages: ComparisonAuditDelta[];
+  competitor_edges: ComparisonInsight[];
+  improve_first: ComparisonInsight[];
+};
+
+export type SiteOpsComparisonReport = {
+  type: "comparison";
+  timestamp: string;
+  target: SiteOpsReport;
+  competitor: SiteOpsReport;
+  comparison: ComparisonSummary;
+};
+
+export type PlaygroundComparisonResponse = {
+  report: SiteOpsComparisonReport;
+  downloads: SiteOpsDownloads;
+};
+
 export type CompetitorSummary = {
   name: string;
   url: string;

@@ -142,6 +142,16 @@ export const docsGroups: DocsGroup[] = [
           },
           {
             type: "subheading",
+            text: "Compare against a competitor URL",
+          },
+          {
+            type: "code",
+            language: "bash",
+            code:
+              'llm-citeops audit --url "https://example.com/docs/article" --compare "https://competitor.example/docs/article" --output html --output-path ./compare-report.html',
+          },
+          {
+            type: "subheading",
             text: "Audit a local Markdown or HTML file",
           },
           {
@@ -363,7 +373,7 @@ llm-citeops audit [options]
   --config <path>       Path to .citeops.json
 
   --probe               Reserved for future LLM probe mode
-  --compare <url>       Reserved for future compare mode`,
+  --compare <url>       Compare one target URL against one competitor URL`,
           },
         ],
       },

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 
 import type {
-  CompetitorAnalysisResponse,
+  PlaygroundComparisonResponse,
   PlaygroundAuditResponse,
   SiteOpsReport,
 } from "@/lib/siteops/types";
@@ -19,21 +19,22 @@ const scoreTone: Record<string, string> = {
 
 export function PlaygroundClient() {
   const [url, setUrl] = useState("");
+  const [competitorUrl, setCompetitorUrl] = useState("");
   const [auditData, setAuditData] = useState<PlaygroundAuditResponse | null>(null);
-  const [competitorData, setCompetitorData] =
-    useState<CompetitorAnalysisResponse | null>(null);
+  const [comparisonData, setComparisonData] =
+    useState<PlaygroundComparisonResponse | null>(null);
   const [auditError, setAuditError] = useState("");
-  const [aiError, setAiError] = useState("");
+  const [comparisonError, setComparisonError] = useState("");
   const [isAuditing, startAudit] = useTransition();
-  const [isAnalyzing, startAnalysis] = useTransition();
+  const [isComparing, startComparison] = useTransition();
 
   const report = auditData?.report ?? null;
 
   function handleAuditSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAuditError("");
-    setAiError("");
-    setCompetitorData(null);
+    setComparisonError("");
+    setComparisonData(null);
 
     startAudit(async () => {
       try {
@@ -61,52 +62,63 @@ export function PlaygroundClient() {
   }
 
   function handleCompetitorAnalysis() {
-    if (!report) return;
+    if (!url.trim() || !competitorUrl.trim()) return;
 
-    setAiError("");
-    startAnalysis(async () => {
+    setComparisonError("");
+    startComparison(async () => {
       try {
         const response = await fetch("/api/playground/competitors", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ url, report }),
+          body: JSON.stringify({ url, competitorUrl }),
         });
         const payload = (await readJsonResponse(response)) as
-          | CompetitorAnalysisResponse
+          | PlaygroundComparisonResponse
           | { error?: string };
 
-        if (!response.ok || !("analysis" in payload)) {
-          throw new Error(readApiError(payload, "Competitor analysis could not be completed."));
+        if (!response.ok || !("report" in payload)) {
+          throw new Error(
+            readApiError(payload, "Competitor comparison could not be completed."),
+          );
         }
 
-        setCompetitorData(payload);
+        setComparisonData(payload);
       } catch (error) {
-        setAiError(
+        setComparisonError(
           error instanceof Error
             ? error.message
-            : "Competitor analysis could not be completed.",
+            : "Competitor comparison could not be completed.",
         );
       }
     });
   }
 
-  function handleDownload(format: DownloadFormat) {
+  function handleAuditDownload(format: DownloadFormat) {
     if (!auditData) return;
+    downloadReport(auditData.downloads[format], format, "citeops-playground-report");
+  }
 
-    const content = auditData.downloads[format];
+  function handleComparisonDownload(format: DownloadFormat) {
+    if (!comparisonData) return;
+    downloadReport(
+      comparisonData.downloads[format],
+      format,
+      "citeops-competitor-comparison",
+    );
+  }
+
+  function downloadReport(content: string, format: DownloadFormat, baseName: string) {
     const mimeType =
       format === "json"
         ? "application/json"
         : format === "html"
           ? "text/html"
           : "text/csv";
-    const extension = format;
-    const fileName = `citeops-playground-report.${extension}`;
     const blob = new Blob([content], { type: mimeType });
     const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = blobUrl;
-    link.download = fileName;
+    link.download = `${baseName}.${format}`;
     link.click();
     URL.revokeObjectURL(blobUrl);
   }
@@ -126,12 +138,12 @@ export function PlaygroundClient() {
               id="playground-title"
               className="mt-4 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl lg:text-5xl"
             >
-              Run a live SiteOps audit, then compare it with competitors.
+              Run a live SiteOps audit, then compare it with a competitor.
             </h1>
             <p className="mt-4 text-base leading-relaxed text-ink-muted sm:text-lg">
               Enter a URL to generate AEO and GEO scores with the SiteOps
-              heuristics. Then use AI to discover competitor pages, audit them,
-              and judge how your page stacks up.
+              heuristics. Add a competitor URL to audit both pages side by side,
+              compare score deltas, and find the gaps to close first.
             </p>
           </div>
 
@@ -150,8 +162,26 @@ export function PlaygroundClient() {
                 className="w-full rounded-2xl border border-border-strong bg-wash px-4 py-3 text-base text-ink outline-none transition focus:border-accent"
               />
             </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-ink">
+                Competitor URL
+              </span>
+              <input
+                value={competitorUrl}
+                onChange={(event) => {
+                  setCompetitorUrl(event.target.value);
+                  setComparisonData(null);
+                }}
+                placeholder="https://competitor.example.com/docs/article"
+                inputMode="url"
+                autoComplete="url"
+                className="w-full rounded-2xl border border-border-strong bg-wash px-4 py-3 text-base text-ink outline-none transition focus:border-accent"
+              />
+            </label>
             <p id="playground-help" className="text-sm text-ink-muted">
-              Best results come from public pages with clear headings, authorship, and factual content.
+              Best results come from public pages with clear headings,
+              authorship, and factual content. Competitor comparison mirrors
+              `llm-citeops audit --url ... --compare ...`.
             </p>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -164,11 +194,11 @@ export function PlaygroundClient() {
               </button>
               <button
                 type="button"
-                disabled={!report || isAnalyzing}
+                disabled={!url.trim() || !competitorUrl.trim() || isComparing}
                 onClick={handleCompetitorAnalysis}
                 className="inline-flex w-full items-center justify-center rounded-full border border-border-strong bg-paper px-6 py-3 text-sm font-semibold text-ink transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
-                {isAnalyzing ? "Trying with AI..." : "Competitor analysis"}
+                {isComparing ? "Comparing pages..." : "Competitor analysis"}
               </button>
             </div>
           </form>
@@ -179,9 +209,9 @@ export function PlaygroundClient() {
             </p>
           ) : null}
 
-          {aiError ? (
+          {comparisonError ? (
             <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              {aiError}
+              {comparisonError}
             </p>
           ) : null}
 
@@ -202,15 +232,15 @@ export function PlaygroundClient() {
                   <div className="flex flex-wrap gap-2">
                     <DownloadButton
                       label="Download JSON"
-                      onClick={() => handleDownload("json")}
+                      onClick={() => handleAuditDownload("json")}
                     />
                     <DownloadButton
                       label="Download HTML"
-                      onClick={() => handleDownload("html")}
+                      onClick={() => handleAuditDownload("html")}
                     />
                     <DownloadButton
                       label="Download CSV"
-                      onClick={() => handleDownload("csv")}
+                      onClick={() => handleAuditDownload("csv")}
                     />
                   </div>
                 </div>
@@ -248,28 +278,31 @@ export function PlaygroundClient() {
               </div>
               <div>
                 <h2 className="font-display text-2xl font-semibold text-ink">
-                  Try with AI
+                  Competitor compare
                 </h2>
                 <p className="mt-2 text-sm leading-7 text-ink-muted">
-                  AI finds comparable competitors, the app audits them with the
-                  same SiteOps pass, and the model explains your relative
-                  positioning.
+                  Add a second URL and the app audits target and competitor with
+                  the same SiteOps pass, then reports deltas, edges, and first
+                  fixes.
                 </p>
               </div>
             </div>
           </div>
 
-          {competitorData ? (
-            <CompetitorResults data={competitorData} />
+          {comparisonData ? (
+            <CompetitorResults
+              data={comparisonData}
+              onDownload={handleComparisonDownload}
+            />
           ) : (
             <div className="min-w-0 rounded-[28px] border border-dashed border-border-strong bg-card p-6">
               <h2 className="font-display text-2xl font-semibold text-ink">
                 Competitor analysis output
               </h2>
               <p className="mt-3 text-sm leading-7 text-ink-muted">
-                After you run a SiteOps audit, the AI workflow will identify
-                comparable pages, score them, and summarize where the target URL
-                wins or trails.
+                Enter a competitor URL and run analysis to see target versus
+                competitor scores, check-level deltas, and the actions that can
+                close the gap.
               </p>
             </div>
           )}
@@ -404,111 +437,203 @@ function AuditList({
 
 function CompetitorResults({
   data,
+  onDownload,
 }: {
-  data: CompetitorAnalysisResponse;
+  data: PlaygroundComparisonResponse;
+  onDownload: (format: DownloadFormat) => void;
 }) {
+  const { report } = data;
+  const { comparison, target, competitor } = report;
+  const scoreItems = [
+    { label: "Composite", value: comparison.scores.composite },
+    { label: "AEO", value: comparison.scores.aeo },
+    { label: "GEO", value: comparison.scores.geo },
+  ];
+
   return (
     <div className="min-w-0 space-y-6 rounded-[28px] border border-border bg-card p-6 shadow-soft">
       <div>
         <p className="text-sm font-semibold uppercase tracking-[0.22em] text-accent">
-          AI verdict
+          Competitor verdict
         </p>
         <h2 className="mt-3 font-display text-3xl font-semibold text-ink">
-          {data.analysis.overallVerdict}
+          {comparison.leader.label}
         </h2>
         <p className="mt-3 text-sm leading-7 text-ink-muted">
-          {data.analysis.summary}
+          {comparison.leader.summary}
         </p>
+      </div>
+
+      <div className="grid gap-3">
+        <UrlCard label="Target" url={target.url} />
+        <UrlCard label="Competitor" url={competitor.url} />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {scoreItems.map((item) => (
+          <div
+            key={item.label}
+            className="min-w-0 rounded-[20px] border border-border bg-paper-muted p-4"
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-subtle">
+              {item.label}
+            </p>
+            <p className="mt-2 font-display text-2xl font-semibold text-ink">
+              {item.value.target} vs {item.value.competitor}
+            </p>
+            <DeltaChip delta={item.value.delta} />
+          </div>
+        ))}
       </div>
 
       <div className="rounded-[22px] bg-paper-muted p-4">
-        <h3 className="font-display text-2xl font-semibold text-ink">
-          Positioning
-        </h3>
-        <p className="mt-2 text-sm leading-7 text-ink-muted">
-          {data.analysis.targetPositioning}
-        </p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-display text-2xl font-semibold text-ink">
+              Download comparison
+            </h3>
+            <p className="mt-1 text-sm text-ink-muted">
+              Export the target-vs-competitor run as JSON, HTML, or CSV.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <DownloadButton
+              label="Download JSON"
+              onClick={() => onDownload("json")}
+            />
+            <DownloadButton
+              label="Download HTML"
+              onClick={() => onDownload("html")}
+            />
+            <DownloadButton
+              label="Download CSV"
+              onClick={() => onDownload("csv")}
+            />
+          </div>
+        </div>
       </div>
 
-      <TextList title="Strengths" items={data.analysis.strengths} />
-      <TextList title="Weaknesses" items={data.analysis.weaknesses} />
-      <TextList title="Opportunities" items={data.analysis.opportunities} />
+      <InsightList title="Improve first" items={comparison.improve_first} />
+      <InsightList title="Competitor edge" items={comparison.competitor_edges} />
+      <DeltaList title="Target advantages" items={comparison.target_advantages} />
+      <DeltaList
+        title="Competitor advantages"
+        items={comparison.competitor_advantages}
+      />
+    </div>
+  );
+}
 
-      <div>
-        <h3 className="font-display text-2xl font-semibold text-ink">
-          Competitor scorecard
-        </h3>
-        <div className="mt-4 space-y-4">
-          {data.analysis.competitorRankings.map((item) => (
+function UrlCard({ label, url }: { label: string; url: string }) {
+  return (
+    <div className="min-w-0 rounded-[20px] border border-border bg-paper-muted p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-subtle">
+        {label}
+      </p>
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-2 block break-all text-sm font-semibold text-accent underline-offset-4 hover:underline"
+      >
+        {url}
+      </a>
+    </div>
+  );
+}
+
+function DeltaChip({ delta }: { delta: number }) {
+  const tone =
+    delta > 0
+      ? "bg-emerald-100 text-emerald-800"
+      : delta < 0
+        ? "bg-rose-100 text-rose-800"
+        : "bg-amber-100 text-amber-800";
+  const label = delta > 0 ? `+${delta}` : String(delta);
+
+  return (
+    <span
+      className={`mt-3 inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${tone}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function InsightList({
+  title,
+  items,
+}: {
+  title: string;
+  items: PlaygroundComparisonResponse["report"]["comparison"]["improve_first"];
+}) {
+  return (
+    <div>
+      <h3 className="font-display text-2xl font-semibold text-ink">{title}</h3>
+      <div className="mt-4 space-y-3">
+        {items.length > 0 ? (
+          items.map((item) => (
             <article
-              key={item.url}
-              className="min-w-0 rounded-[22px] border border-border bg-paper-muted p-4"
+              key={`${title}-${item.id}`}
+              className="rounded-[20px] border border-border bg-paper-muted p-4"
             >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <h4 className="text-lg font-semibold text-ink">{item.name}</h4>
-                  <a
-                    href={item.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1 block break-all text-sm text-accent underline-offset-4 hover:underline"
-                  >
-                    {item.url}
-                  </a>
-                </div>
-                <div className="grid grid-cols-1 gap-2 text-center sm:grid-cols-3">
-                  <ScoreChip label="Composite" value={item.composite} />
-                  <ScoreChip label="AEO" value={item.aeo} />
-                  <ScoreChip label="GEO" value={item.geo} />
-                </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full bg-card px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-ink-subtle">
+                  {item.priority} priority
+                </span>
+                <span className="rounded-full bg-card px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-ink-subtle">
+                  +{item.score_impact} impact
+                </span>
               </div>
-              <p className="mt-3 text-sm leading-7 text-ink-muted">
-                {item.takeaway}
+              <h4 className="mt-3 text-lg font-semibold text-ink">
+                {item.title}
+              </h4>
+              <p className="mt-2 text-sm leading-7 text-ink-muted">
+                {item.reason}
               </p>
+              <p className="mt-2 text-sm leading-7 text-ink">{item.action}</p>
             </article>
-          ))}
-        </div>
+          ))
+        ) : (
+          <p className="rounded-[20px] border border-border bg-paper-muted p-4 text-sm leading-7 text-ink-muted">
+            No priority gaps found for this section.
+          </p>
+        )}
       </div>
+    </div>
+  );
+}
 
-      <div>
-        <h3 className="font-display text-2xl font-semibold text-ink">
-          Audited competitors
-        </h3>
-        <div className="mt-4 space-y-3">
-          {data.competitors.map((item) => (
-            <article
-              key={item.competitor.url}
-              className="min-w-0 rounded-[20px] border border-border bg-paper-muted p-4"
-            >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-lg font-semibold text-ink">
-                    {item.competitor.name}
-                  </p>
-                  <a
-                    href={item.competitor.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1 block break-all text-sm text-accent underline-offset-4 hover:underline"
-                  >
-                    {item.competitor.url}
-                  </a>
-                  <p className="mt-2 text-sm leading-7 text-ink-muted">
-                    {item.competitor.reason}
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 gap-2 text-center sm:grid-cols-3">
-                  <ScoreChip
-                    label="Composite"
-                    value={item.report.scores.composite}
-                  />
-                  <ScoreChip label="AEO" value={item.report.scores.aeo} />
-                  <ScoreChip label="GEO" value={item.report.scores.geo} />
-                </div>
+function DeltaList({
+  title,
+  items,
+}: {
+  title: string;
+  items: PlaygroundComparisonResponse["report"]["comparison"]["target_advantages"];
+}) {
+  if (items.length === 0) return null;
+
+  return (
+    <div>
+      <h3 className="font-display text-2xl font-semibold text-ink">{title}</h3>
+      <div className="mt-4 space-y-3">
+        {items.slice(0, 5).map((item) => (
+          <article
+            key={`${title}-${item.id}`}
+            className="rounded-[20px] border border-border bg-paper-muted p-4"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h4 className="text-lg font-semibold text-ink">{item.title}</h4>
+                <p className="mt-1 text-sm text-ink-muted">
+                  Target {item.target_status} vs competitor{" "}
+                  {item.competitor_status}
+                </p>
               </div>
-            </article>
-          ))}
-        </div>
+              <DeltaChip delta={item.delta} />
+            </div>
+          </article>
+        ))}
       </div>
     </div>
   );
@@ -529,37 +654,6 @@ function DownloadButton({
     >
       {label}
     </button>
-  );
-}
-
-function TextList({ title, items }: { title: string; items: string[] }) {
-  if (items.length === 0) return null;
-
-  return (
-    <div>
-      <h3 className="font-display text-2xl font-semibold text-ink">{title}</h3>
-      <div className="mt-3 space-y-3">
-        {items.map((item) => (
-          <p
-            key={`${title}-${item}`}
-            className="rounded-[20px] border border-border bg-paper-muted px-4 py-3 text-sm leading-7 text-ink-muted"
-          >
-            {item}
-          </p>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ScoreChip({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="min-w-0 rounded-2xl bg-card px-3 py-2">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-subtle">
-        {label}
-      </p>
-      <p className="mt-1 text-lg font-semibold text-ink">{value}</p>
-    </div>
   );
 }
 
