@@ -75,13 +75,11 @@
     "businessBullet1": "Explain whether the page is likely to be quoted or skipped.",
     "businessBullet2": "Call out the commercial risk of weak trust and freshness signals.",
     "businessBullet3": "Summarize the top 3 changes that most improve discoverability.",
-    "businessImageAlt": "Business team reviewing website performance in a meeting room",
     "developerTitle": "For developers and operators",
     "developerBody": "Next, list the exact fixes. Tech buyers stay hooked. Other teams still get value.",
     "developerBullet1": "Map every score to a concrete check and evidence.",
     "developerBullet2": "Show schema, heading, citation, and metadata gaps clearly.",
-    "developerBullet3": "Keep JSON, CSV, and CI outputs ready for pipelines.",
-    "developerImageAlt": "Developers collaborating over code and analytics dashboards"
+    "developerBullet3": "Keep JSON, CSV, and CI outputs ready for pipelines."
   },
   "Education": {
     "title": "AEO & GEO in plain language",

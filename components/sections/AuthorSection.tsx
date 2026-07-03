@@ -30,7 +30,7 @@ export function AuthorSection() {
           </div>
           <div className="bg-card px-4 py-3 sm:min-w-56 sm:p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-subtle">
-              Last updated
+              npm package updated
             </p>
             <time
               dateTime={SITE_LAST_UPDATED_ISO}
