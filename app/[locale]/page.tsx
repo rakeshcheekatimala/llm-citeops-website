@@ -21,7 +21,10 @@ import { ReviewsSection } from "@/components/sections/ReviewsSection";
 import { StatsStrip } from "@/components/sections/StatsStrip";
 import { WorkflowSection } from "@/components/sections/WorkflowSection";
 import { WhySection } from "@/components/sections/WhySection";
-import { SITE_LAST_UPDATED_ISO } from "@/config/content-freshness";
+import {
+  SITE_LAST_UPDATED_ISO,
+  SITE_PUBLISHED_ISO,
+} from "@/config/content-freshness";
 import { SITE_URL } from "@/config/site-url";
 
 type Props = {
@@ -39,7 +42,8 @@ export async function generateMetadata({
   const t = await getTranslations({ locale, namespace: "Metadata" });
   const baseUrl = SITE_URL;
   const canonical = locale === "en" ? baseUrl : `${baseUrl}/${locale}`;
-  const isoTime = `${SITE_LAST_UPDATED_ISO}T12:00:00.000Z`;
+  const publishedTime = `${SITE_PUBLISHED_ISO}T12:00:00.000Z`;
+  const modifiedTime = `${SITE_LAST_UPDATED_ISO}T12:00:00.000Z`;
 
   return {
     title: t("title"),
@@ -51,8 +55,8 @@ export async function generateMetadata({
       url: canonical,
       title: t("title"),
       description: t("description"),
-      publishedTime: isoTime,
-      modifiedTime: isoTime,
+      publishedTime,
+      modifiedTime,
       siteName: "CiteOps",
     },
     twitter: {
@@ -61,8 +65,8 @@ export async function generateMetadata({
       description: t("description"),
     },
     other: {
-      "article:published_time": isoTime,
-      "article:modified_time": isoTime,
+      "article:published_time": publishedTime,
+      "article:modified_time": modifiedTime,
     },
   };
 }
@@ -98,7 +102,7 @@ export default async function HomePage({ params }: Props) {
         url: baseUrl,
       },
       dateModified: SITE_LAST_UPDATED_ISO,
-      datePublished: SITE_LAST_UPDATED_ISO,
+      datePublished: SITE_PUBLISHED_ISO,
       about: [
         { "@type": "Thing", "name": "Answer Engine Optimization" },
         { "@type": "Thing", "name": "Generative Engine Optimization" },
