@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
 
 import {
+  canFailOpen,
+  getReportAccessConfig,
+  shouldSendMagicLink,
+} from "@/lib/reports/access";
+import {
   buildReportMagicLinkRedirect,
   getPublicSiteOrigin,
 } from "@/lib/reports/redirects";
-import { markReportUnlockIntent } from "@/lib/reports/storage";
+import {
+  captureReportLead,
+  markReportUnlockIntent,
+} from "@/lib/reports/storage";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -85,6 +93,36 @@ export async function POST(
     }
 
     const email = body.email.trim().toLowerCase();
+    const accessConfig = getReportAccessConfig();
+
+    if (!shouldSendMagicLink(accessConfig)) {
+      try {
+        const capture = await captureReportLead({
+          reportId,
+          claimToken: body.claimToken,
+          email,
+        });
+
+        return NextResponse.json({
+          ok: true,
+          captured: capture.captured,
+          message: capture.captured
+            ? "Report unlocked. You can download it now."
+            : "Report unlocked. Download is ready.",
+        });
+      } catch (captureError) {
+        if (!canFailOpen(accessConfig)) {
+          throw captureError;
+        }
+
+        return NextResponse.json({
+          ok: true,
+          captured: false,
+          message: "Report unlocked. Download is ready.",
+        });
+      }
+    }
+
     await markReportUnlockIntent({
       reportId,
       claimToken: body.claimToken,
