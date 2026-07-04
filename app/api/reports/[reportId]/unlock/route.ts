@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
 
+import {
+  buildReportMagicLinkRedirect,
+  getPublicSiteOrigin,
+} from "@/lib/reports/redirects";
 import { markReportUnlockIntent } from "@/lib/reports/storage";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
-
-function getRequestOrigin(request: Request) {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-    new URL(request.url).origin
-  );
-}
 
 export async function POST(
   request: Request,
@@ -44,13 +41,11 @@ export async function POST(
       email,
     });
 
-    const origin = getRequestOrigin(request);
-    const reportPath = `/tools/geo-audit/report?id=${encodeURIComponent(
+    const emailRedirectTo = buildReportMagicLinkRedirect({
+      origin: getPublicSiteOrigin(request),
       reportId,
-    )}&token=${encodeURIComponent(body.claimToken)}`;
-    const emailRedirectTo = `${origin}/auth/confirm?next=${encodeURIComponent(
-      reportPath,
-    )}`;
+      claimToken: body.claimToken,
+    });
 
     const supabase = await createSupabaseServerClient();
     const { error } = await supabase.auth.signInWithOtp({

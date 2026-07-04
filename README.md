@@ -62,6 +62,15 @@ http://localhost:3000/auth/confirm
 http://localhost:3000/tools/geo-audit/report
 ```
 
+For production, set Supabase Auth's Site URL and redirect allowlist to the live
+domain before sending magic links:
+
+```text
+https://your-production-domain.com
+https://your-production-domain.com/auth/confirm
+https://your-production-domain.com/tools/geo-audit/report
+```
+
 5. Add environment variables:
 
 | Variable | Purpose |
@@ -71,3 +80,7 @@ http://localhost:3000/tools/geo-audit/report
 | `SUPABASE_SECRET_KEY` | Supabase service role key for trusted server routes |
 | `NEXT_PUBLIC_SITE_URL` | Local or production origin used in magic-link redirects |
 | `NEXT_PUBLIC_ENABLE_GOOGLE_AUTH` | Set to `true` after Google OAuth is configured |
+
+On Vercel, `NEXT_PUBLIC_SITE_URL` must be the production origin, for example
+`https://your-production-domain.com`. If it is missing or set to localhost,
+Supabase emails can redirect users to the wrong site.
