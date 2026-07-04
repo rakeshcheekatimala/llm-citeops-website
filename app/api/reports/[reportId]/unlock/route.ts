@@ -18,14 +18,28 @@ class ReportUnlockError extends Error {
   }
 }
 
-function formatMagicLinkAuthError(message: string, redirectTo: string) {
+function getMagicLinkAuthFailure(message: string, redirectTo: string) {
   const normalizedMessage = message.toLowerCase();
 
   if (
     normalizedMessage.includes("redirect") ||
     normalizedMessage.includes("not allowed")
   ) {
-    return `Supabase rejected the magic-link redirect. Add this callback to Supabase Auth redirect URLs: ${redirectTo}`;
+    return {
+      message: `Supabase rejected the magic-link redirect. Add this callback to Supabase Auth redirect URLs: ${redirectTo}`,
+      status: 502,
+    };
+  }
+
+  if (
+    normalizedMessage.includes("rate limit") ||
+    normalizedMessage.includes("too many")
+  ) {
+    return {
+      message:
+        "Email rate limit exceeded. Please wait about 60 seconds before requesting another secure report link.",
+      status: 429,
+    };
   }
 
   if (
@@ -33,10 +47,16 @@ function formatMagicLinkAuthError(message: string, redirectTo: string) {
     normalizedMessage.includes("smtp") ||
     normalizedMessage.includes("rate limit")
   ) {
-    return `Supabase could not send the magic-link email: ${message}`;
+    return {
+      message: `Supabase could not send the magic-link email: ${message}`,
+      status: 502,
+    };
   }
 
-  return `Supabase could not create the magic link: ${message}`;
+  return {
+    message: `Supabase could not create the magic link: ${message}`,
+    status: 502,
+  };
 }
 
 export async function POST(
@@ -87,10 +107,8 @@ export async function POST(
     });
 
     if (error) {
-      throw new ReportUnlockError(
-        formatMagicLinkAuthError(error.message, emailRedirectTo),
-        502,
-      );
+      const authFailure = getMagicLinkAuthFailure(error.message, emailRedirectTo);
+      throw new ReportUnlockError(authFailure.message, authFailure.status);
     }
 
     return NextResponse.json({

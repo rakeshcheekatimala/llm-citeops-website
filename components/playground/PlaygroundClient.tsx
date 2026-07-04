@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 import type {
   AuditReportPreview,
@@ -585,16 +585,29 @@ function UnlockReportPanel({
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [isSending, startSending] = useTransition();
   const [isGoogleLoading, startGoogle] = useTransition();
   const googleAuthEnabled = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === "true";
+  const isEmailSubmitDisabled = isSending || resendCooldown > 0;
 
   const reportPath = `/tools/geo-audit/report?id=${encodeURIComponent(
     reportId,
   )}&token=${encodeURIComponent(claimToken)}`;
 
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+
+    const timer = window.setInterval(() => {
+      setResendCooldown((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
+
   function handleEmailSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isEmailSubmitDisabled) return;
     setMessage("");
     setError("");
 
@@ -611,9 +624,18 @@ function UnlockReportPanel({
           | { error?: string };
 
         if (!response.ok || !("ok" in payload)) {
-          throw new Error(readApiError(payload, "Unable to send report link."));
+          const apiError = new Error(
+            readApiError(payload, "Unable to send report link."),
+          );
+
+          if (response.status === 429) {
+            setResendCooldown(60);
+          }
+
+          throw apiError;
         }
 
+        setResendCooldown(60);
         setMessage(payload.message);
       } catch (sendError) {
         setError(
@@ -705,10 +727,14 @@ function UnlockReportPanel({
         </label>
         <button
           type="submit"
-          disabled={isSending}
+          disabled={isEmailSubmitDisabled}
           className="inline-flex items-center justify-center rounded-full bg-accent px-6 py-3 text-sm font-semibold text-accent-fg transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isSending ? "Sending..." : "Send secure report link"}
+          {isSending
+            ? "Sending..."
+            : resendCooldown > 0
+              ? `Retry in ${resendCooldown}s`
+              : "Send secure report link"}
         </button>
       </form>
 
