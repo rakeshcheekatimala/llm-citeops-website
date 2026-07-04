@@ -9,6 +9,7 @@ export default defineConfig({
       reporter: ["text", "json-summary"],
       include: [
         "lib/reports/preview.ts",
+        "lib/reports/redirects.ts",
         "lib/reports/tokens.ts",
         "lib/supabase/config.ts",
       ],
