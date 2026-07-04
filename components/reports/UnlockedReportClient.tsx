@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { ScoreGauge } from "@/components/ScoreGauge";
 import type { UnlockedReportResponse } from "@/lib/reports/types";
 import type {
   SiteOpsComparisonReport,
@@ -262,9 +263,21 @@ function ComparisonReportView({
 
 function ScoreBand({ scores }: { scores: SiteOpsReport["scores"] }) {
   const items = [
-    { label: "Composite", value: scores.composite },
-    { label: "AEO", value: scores.aeo },
-    { label: "GEO", value: scores.geo },
+    {
+      label: "Composite readiness",
+      value: scores.composite,
+      helper: "Overall AI visibility risk",
+    },
+    {
+      label: "AEO score",
+      value: scores.aeo,
+      helper: "Answer extraction clarity",
+    },
+    {
+      label: "GEO score",
+      value: scores.geo,
+      helper: "Trust and citation depth",
+    },
   ];
 
   return (
@@ -288,14 +301,12 @@ function ScoreBand({ scores }: { scores: SiteOpsReport["scores"] }) {
       </div>
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
         {items.map((item) => (
-          <div key={item.label} className="rounded-[20px] border border-border bg-card p-5">
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-ink-subtle">
-              {item.label}
-            </p>
-            <p className="mt-3 font-display text-5xl font-semibold text-ink">
-              {item.value}
-            </p>
-          </div>
+          <ScoreGauge
+            key={item.label}
+            label={item.label}
+            value={item.value}
+            helper={item.helper}
+          />
         ))}
       </div>
     </section>
