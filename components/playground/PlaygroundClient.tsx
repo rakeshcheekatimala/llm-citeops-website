@@ -10,6 +10,7 @@ import type {
   UnlockedReportResponse,
 } from "@/lib/reports/types";
 import { ReportContent } from "@/components/reports/UnlockedReportClient";
+import { ScoreGauge } from "@/components/ScoreGauge";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const scoreTone: Record<string, string> = {
@@ -18,6 +19,14 @@ const scoreTone: Record<string, string> = {
   "needs-improvement": "bg-amber-100 text-amber-800",
   poor: "bg-rose-100 text-rose-800",
 };
+
+const auditProgressSteps = [
+  "Fetching HTML and checking response metadata",
+  "Parsing headings, copy, links, and JSON-LD",
+  "Scoring AEO structure and answer readiness",
+  "Scoring GEO trust, freshness, and citation signals",
+  "Preparing priority fixes and export data",
+];
 
 export function PlaygroundClient({ initialUrl = "" }: { initialUrl?: string }) {
   const [url, setUrl] = useState(initialUrl);
@@ -112,16 +121,21 @@ export function PlaygroundClient({ initialUrl = "" }: { initialUrl?: string }) {
               id="playground-title"
               className="mt-4 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl lg:text-5xl"
             >
-              Run a live SiteOps audit, then compare it with a competitor.
+              Run a zero-token SiteOps audit, then compare it with a competitor.
             </h1>
             <p className="mt-4 text-base leading-relaxed text-ink-muted sm:text-lg">
               Enter a URL to generate AEO and GEO scores with the SiteOps
-              heuristics. You will see a focused preview first, then unlock the
-              full report when you share where we should send follow-up notes.
+              heuristics. The standard scan is deterministic, so you see a
+              focused preview first without sending page content to a third-party
+              LLM.
             </p>
           </div>
 
-          <form className="mt-8 space-y-4" onSubmit={handleAuditSubmit} aria-describedby="playground-help">
+          <form
+            className="mt-8 space-y-4"
+            onSubmit={handleAuditSubmit}
+            aria-describedby="playground-help"
+          >
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-ink">
                 URL to audit
@@ -136,6 +150,7 @@ export function PlaygroundClient({ initialUrl = "" }: { initialUrl?: string }) {
                 className="w-full rounded-2xl border border-border-strong bg-wash px-4 py-3 text-base text-ink outline-none transition focus:border-accent"
               />
             </label>
+            <AuditTrustBadges />
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-ink">
                 Competitor URL
@@ -175,6 +190,12 @@ export function PlaygroundClient({ initialUrl = "" }: { initialUrl?: string }) {
               </button>
             </div>
           </form>
+
+          {isAuditing || isComparing ? (
+            <AuditProgress
+              title={isComparing ? "Comparing pages" : "Running SiteOps audit"}
+            />
+          ) : null}
 
           {auditError ? (
             <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -255,11 +276,86 @@ export function PlaygroundClient({ initialUrl = "" }: { initialUrl?: string }) {
   );
 }
 
+function AuditTrustBadges() {
+  const badges = [
+    {
+      label: "Zero-token SiteOps scan",
+      body: "The standard audit uses deterministic checks, not an LLM prompt.",
+    },
+    {
+      label: "Privacy-first by default",
+      body: "Page content is not sent to third-party LLMs for the standard scan.",
+    },
+  ];
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {badges.map((badge) => (
+        <div
+          key={badge.label}
+          className="rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3"
+        >
+          <p className="text-sm font-semibold text-emerald-950">{badge.label}</p>
+          <p className="mt-1 text-xs leading-5 text-emerald-800">
+            {badge.body}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AuditProgress({ title }: { title: string }) {
+  return (
+    <section
+      aria-live="polite"
+      className="mt-5 rounded-[24px] border border-border bg-paper-muted p-5"
+    >
+      <div className="flex items-center gap-3">
+        <span className="h-3 w-3 rounded-full bg-accent shadow-[0_0_0_6px_rgb(8_114_83_/_0.12)]" />
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-ink-subtle">
+            {title}
+          </p>
+          <p className="mt-1 text-sm text-ink-muted">
+            Building the same evidence trail the report will use.
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-2">
+        {auditProgressSteps.map((step, index) => (
+          <div
+            key={step}
+            className="flex items-center gap-3 rounded-[16px] border border-border bg-card px-3 py-2 text-sm text-ink-muted"
+          >
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-accent text-xs font-semibold text-accent-fg">
+              {index + 1}
+            </span>
+            <span>{step}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ScoreSummary({ report }: { report: SingleReportPreview }) {
   const scores = [
-    { label: "Composite", value: report.scores.composite },
-    { label: "AEO", value: report.scores.aeo },
-    { label: "GEO", value: report.scores.geo },
+    {
+      label: "Composite readiness",
+      value: report.scores.composite,
+      helper: "Overall AI visibility risk",
+    },
+    {
+      label: "AEO score",
+      value: report.scores.aeo,
+      helper: "Answer extraction clarity",
+    },
+    {
+      label: "GEO score",
+      value: report.scores.geo,
+      helper: "Trust and citation depth",
+    },
   ];
 
   return (
@@ -287,17 +383,12 @@ function ScoreSummary({ report }: { report: SingleReportPreview }) {
 
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
         {scores.map((score) => (
-          <div
+          <ScoreGauge
             key={score.label}
-            className="min-w-0 rounded-[20px] border border-border bg-card px-5 py-4"
-          >
-            <p className="text-sm font-medium uppercase tracking-[0.16em] text-ink-subtle">
-              {score.label}
-            </p>
-            <p className="mt-3 font-display text-4xl font-semibold text-ink sm:text-5xl">
-              {score.value}
-            </p>
-          </div>
+            label={score.label}
+            value={score.value}
+            helper={score.helper}
+          />
         ))}
       </div>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
