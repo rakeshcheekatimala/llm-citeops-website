@@ -7,6 +7,7 @@ import { getMessages, getTranslations, setRequestLocale } from "next-intl/server
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { CloudflareAnalytics } from "@/components/CloudflareAnalytics";
 import { SITE_URL } from "@/config/site-url";
 import { routing } from "@/i18n/routing";
 
@@ -104,6 +105,7 @@ export default async function LocaleLayout({ children, params }: Props) {
         <NextIntlClientProvider messages={messages}>
           {children}
         </NextIntlClientProvider>
+        <CloudflareAnalytics />
       </body>
     </html>
   );

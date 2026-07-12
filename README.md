@@ -46,6 +46,7 @@ Deploy on [Vercel](https://vercel.com) or any Node host. For static export, add 
 | `NEXT_PUBLIC_NPM_URL` | npm package URL |
 | `NEXT_PUBLIC_INSTALL_CMD` | Install command shown in hero and CTA |
 | `NEXT_PUBLIC_OVERVIEW_IMAGE_URL` | Terminal screenshot URL |
+| `NEXT_PUBLIC_CLOUDFLARE_WEB_ANALYTICS_TOKEN` | Cloudflare Web Analytics token; loads only in production |
 
 ## Report unlocks
 
