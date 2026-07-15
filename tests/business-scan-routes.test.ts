@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resetRateLimits } from "@/lib/net/rate-limit";
 
 const {
+  MockBusinessScanStorageSetupError,
   MockProjectAccessError,
   runBusinessAwareScan,
   getBusinessScanProject,
@@ -10,6 +11,12 @@ const {
   storeBusinessScanProjectBestEffort,
   discoverBusinessScanProject,
 } = vi.hoisted(() => {
+  class MockBusinessScanStorageSetupError extends Error {
+    constructor(message = "Business-Aware Scan storage is not installed yet.") {
+      super(message);
+      this.name = "BusinessScanStorageSetupError";
+    }
+  }
   class MockProjectAccessError extends Error {
     constructor(message: string) {
       super(message);
@@ -17,6 +24,7 @@ const {
     }
   }
   return {
+    MockBusinessScanStorageSetupError,
     MockProjectAccessError,
     runBusinessAwareScan: vi.fn(),
     getBusinessScanProject: vi.fn(),
@@ -35,6 +43,7 @@ vi.mock("@/lib/business-scan/discovery", () => ({
 }));
 
 vi.mock("@/lib/business-scan/storage", () => ({
+  BusinessScanStorageSetupError: MockBusinessScanStorageSetupError,
   ProjectAccessError: MockProjectAccessError,
   getBusinessScanProject,
   updateBusinessScanProjectBestEffort,
@@ -140,6 +149,19 @@ describe("POST /api/business-scan/scan", () => {
     expect(response.status).toBe(403);
   });
 
+  it("returns 503 when scan-by-id needs missing storage setup", async () => {
+    getBusinessScanProject.mockRejectedValueOnce(
+      new MockBusinessScanStorageSetupError("Storage setup missing."),
+    );
+
+    const response = await scanPost(scanRequest({ projectId: "local-1" }));
+    const payload = (await response.json()) as { code?: string; error?: string };
+
+    expect(response.status).toBe(503);
+    expect(payload.code).toBe("business_scan_storage_not_configured");
+    expect(payload.error).toBe("Storage setup missing.");
+  });
+
   it("rate limits repeated scans", async () => {
     let last = await scanPost(scanRequest({ project: project([]) }));
     for (let i = 0; i < 12; i += 1) {
@@ -171,6 +193,22 @@ describe("GET /api/business-scan/projects/[id]", () => {
       { params: Promise.resolve({ projectId: "proj-1" }) },
     );
     expect(getBusinessScanProject).toHaveBeenCalledWith("proj-1", "secret-token");
+  });
+
+  it("returns 503 when storage setup is missing", async () => {
+    getBusinessScanProject.mockRejectedValueOnce(
+      new MockBusinessScanStorageSetupError("Storage setup missing."),
+    );
+
+    const response = await projectGet(
+      new Request("http://test/api/business-scan/projects/local-1"),
+      { params: Promise.resolve({ projectId: "local-1" }) },
+    );
+    const payload = (await response.json()) as { code?: string; error?: string };
+
+    expect(response.status).toBe(503);
+    expect(payload.code).toBe("business_scan_storage_not_configured");
+    expect(payload.error).toBe("Storage setup missing.");
   });
 });
 

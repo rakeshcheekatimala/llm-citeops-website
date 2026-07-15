@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  businessScanStorageSetupMessage,
+  BusinessScanStorageSetupError,
   formatBusinessScanStorageError,
   tokenMatchesHash,
 } from "@/lib/business-scan/storage";
@@ -14,7 +16,13 @@ describe("business scan storage", () => {
       ),
     );
 
-    expect(message).toContain("Run supabase/business-scan-projects.sql");
+    expect(message).toBe(businessScanStorageSetupMessage);
+  });
+
+  it("exposes a typed setup error for routes to return a clear 503", () => {
+    const error = new BusinessScanStorageSetupError();
+    expect(error.message).toBe(businessScanStorageSetupMessage);
+    expect(error.name).toBe("BusinessScanStorageSetupError");
   });
 
   it("keeps unrelated storage errors intact", () => {

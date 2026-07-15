@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { isBusinessScanEnabled } from "@/lib/business-scan/feature-flag";
 import {
+  BusinessScanStorageSetupError,
   getBusinessScanProject,
   ProjectAccessError,
   updateBusinessScanProjectBestEffort,
@@ -43,6 +44,12 @@ export async function GET(
   } catch (error) {
     if (error instanceof ProjectAccessError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    if (error instanceof BusinessScanStorageSetupError) {
+      return NextResponse.json(
+        { error: error.message, code: "business_scan_storage_not_configured" },
+        { status: 503 },
+      );
     }
     return NextResponse.json(
       {
@@ -99,6 +106,12 @@ export async function PATCH(
   } catch (error) {
     if (error instanceof ProjectAccessError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    if (error instanceof BusinessScanStorageSetupError) {
+      return NextResponse.json(
+        { error: error.message, code: "business_scan_storage_not_configured" },
+        { status: 503 },
+      );
     }
     if (error instanceof InvalidProjectError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

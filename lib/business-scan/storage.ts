@@ -15,6 +15,16 @@ export class ProjectAccessError extends Error {
   }
 }
 
+export class BusinessScanStorageSetupError extends Error {
+  constructor(message = businessScanStorageSetupMessage) {
+    super(message);
+    this.name = "BusinessScanStorageSetupError";
+  }
+}
+
+export const businessScanStorageSetupMessage =
+  "Business-Aware Scan storage is not installed yet. Run supabase/business-scan-projects.sql in the Supabase SQL editor, then retry the scan.";
+
 /** Constant-time comparison of a presented token against a stored hash. */
 export function tokenMatchesHash(
   token: string | undefined,
@@ -116,7 +126,7 @@ export async function updateBusinessScanProjectBestEffort(
 
 export async function getBusinessScanProject(projectId: string, editToken?: string) {
   if (projectId.startsWith("local_") || !isSupabaseAdminConfigured()) {
-    throw new Error("Business-Aware Scan project is not stored.");
+    throw new BusinessScanStorageSetupError();
   }
 
   const supabase = createSupabaseAdminClient();
@@ -217,7 +227,7 @@ export function formatBusinessScanStorageError(error: unknown) {
     message.includes("business_scan_projects") &&
     message.includes("schema cache")
   ) {
-    return "Business-Aware Scan storage is not installed yet. Run supabase/business-scan-projects.sql in the Supabase SQL editor, then retry the scan.";
+    return businessScanStorageSetupMessage;
   }
 
   return message;
