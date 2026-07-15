@@ -10,7 +10,9 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "load:test:business": "k6 run load-tests/k6/business-scan.js",
+    "load:test:playground": "k6 run load-tests/k6/playground-audit.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",
